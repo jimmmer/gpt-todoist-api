@@ -1,0 +1,51 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GPT Todoist Integration",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/add_task": {
+      "post": {
+        "operationId": "addTask",
+        "summary": "Add a task to Todoist",
+        "parameters": [
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "task_name": {
+                    "type": "string",
+                    "description": "The content of the task"
+                  },
+                  "due_date": {
+                    "type": "string",
+                    "description": "Due date (e.g. 'tomorrow', 'next Monday')"
+                  }
+                },
+                "required": ["task_name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task successfully added"
+          }
+        }
+      }
+    }
+  }
+}
