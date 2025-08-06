@@ -4,6 +4,11 @@
     "title": "GPT Todoist Integration",
     "version": "1.0.0"
   },
+  "servers": [
+    {
+      "url": "https://gpt-todoist.onrender.com"
+    }
+  ],
   "paths": {
     "/add_task": {
       "post": {
