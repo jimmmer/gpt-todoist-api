@@ -1,97 +1,108 @@
-import os
-import requests
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import os
+import requests
 
-# Load environment variables from .env
 load_dotenv()
 
-# Initialize FastAPI app
 app = FastAPI()
 
-# Load API secrets
+# Load API keys from environment variables
 TODOIST_API_TOKEN = os.getenv("TODOIST_API_TOKEN")
 API_KEY = os.getenv("MY_PRIVATE_API_KEY")
 
-# Request model for adding a task
-class AddTaskRequest(BaseModel):
-    task_name: str
-    due_date: str = None  # Optional
 
-# Request model for updating a task
+class TaskRequest(BaseModel):
+    task_name: str
+    due_date: str = None
+
+
 class UpdateTaskRequest(BaseModel):
     task_id: str
-    new_content: str
+    task_name: str = None
+    due_date: str = None
 
-# Add a new task to Todoist
+
 @app.post("/add_task")
-async def add_task(req: AddTaskRequest, x_api_key: str = Header(None)):
+def add_task(task: TaskRequest, x_api_key: str = Header(...)):
+    print(f"Received API key: {x_api_key}")  # 🔍 Debug line
+
     if x_api_key != API_KEY:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    payload = {"content": req.task_name}
-    if req.due_date:
-        payload["due_string"] = req.due_date
+    headers = {
+        "Authorization": f"Bearer {TODOIST_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
 
-    response = requests.post(
-        "https://api.todoist.com/rest/v2/tasks",
-        headers={
-            "Authorization": f"Bearer {TODOIST_API_TOKEN}",
-            "Content-Type": "application/json"
-        },
-        json=payload
-    )
+    data = {
+        "content": task.task_name
+    }
 
-    if response.status_code in [200, 204]:
-        return {"message": "Task added successfully"}
-    else:
-        return {
-            "error": "Failed to add task to Todoist",
-            "status_code": response.status_code,
-            "response": response.json()
-        }
+    if task.due_date:
+        data["due_string"] = task.due_date
 
-# Update an existing task
+    response = requests.post("https://api.todoist.com/rest/v2/tasks", headers=headers, json=data)
+
+    if response.status_code not in [200, 204]:
+        raise HTTPException(status_code=response.status_code, detail="Failed to add task to Todoist")
+
+    return {"message": "Task added successfully"}
+
+
 @app.post("/update_task")
-async def update_task(req: UpdateTaskRequest, x_api_key: str = Header(None)):
+def update_task(task: UpdateTaskRequest, x_api_key: str = Header(...)):
+    print(f"Received API key: {x_api_key}")  # 🔍 Debug line
+
     if x_api_key != API_KEY:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    headers = {
+        "Authorization": f"Bearer {TODOIST_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    data = {}
+    if task.task_name:
+        data["content"] = task.task_name
+    if task.due_date:
+        data["due_string"] = task.due_date
+
+    if not data:
+        raise HTTPException(status_code=400, detail="No updates provided")
 
     response = requests.post(
-        f"https://api.todoist.com/rest/v2/tasks/{req.task_id}",
-        headers={
-            "Authorization": f"Bearer {TODOIST_API_TOKEN}",
-            "Content-Type": "application/json"
-        },
-        json={"content": req.new_content}
+        f"https://api.todoist.com/rest/v2/tasks/{task.task_id}",
+        headers=headers,
+        json=data
     )
 
-    if response.status_code in [200, 204]:
-        return {"message": "Task updated successfully"}
-    else:
-        return {
-            "error": "Failed to update task",
-            "status_code": response.status_code,
-            "response": response.json()
-        }
+    if response.status_code != 204:
+        raise HTTPException(status_code=response.status_code, detail="Failed to update task")
 
-# List all active tasks
+    return {"message": "Task updated successfully"}
+
+
 @app.get("/list_tasks")
-async def list_tasks(x_api_key: str = Header(None)):
+def list_tasks(x_api_key: str = Header(...)):
+    print(f"Received API key: {x_api_key}")  # 🔍 Debug line
+
     if x_api_key != API_KEY:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    response = requests.get(
-        "https://api.todoist.com/rest/v2/tasks",
-        headers={"Authorization": f"Bearer {TODOIST_API_TOKEN}"}
-    )
+    headers = {
+        "Authorization": f"Bearer {TODOIST_API_TOKEN}"
+    }
 
-    if response.status_code == 200:
-        return response.json()
-    else:
-        return {
-            "error": "Failed to retrieve tasks",
-            "status_code": response.status_code,
-            "response": response.json()
-        }
+    response = requests.get("https://api.todoist.com/rest/v2/tasks", headers=headers)
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Failed to retrieve tasks")
+
+    return response.json()
+
+
+@app.get("/")
+def root():
+    return {"message": "GPT Todoist API is live"}
