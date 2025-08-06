@@ -15,18 +15,6 @@
       "post": {
         "operationId": "addTask",
         "summary": "Add a task to Todoist",
-        "description": "Creates a new task in the user's Todoist account",
-        "tags": ["Tasks"],
-        "parameters": [
-          {
-            "name": "x-api-key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -41,6 +29,10 @@
                   "due_date": {
                     "type": "string",
                     "description": "Due date (e.g. 'tomorrow', 'next Monday')"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "Optional detailed description of the task"
                   }
                 },
                 "required": ["task_name"]
@@ -51,6 +43,49 @@
         "responses": {
           "200": {
             "description": "Task successfully added"
+          }
+        }
+      }
+    },
+    "/list_tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "summary": "List all Todoist tasks",
+        "responses": {
+          "200": {
+            "description": "List of tasks"
+          }
+        }
+      }
+    },
+    "/update_task": {
+      "post": {
+        "operationId": "updateTask",
+        "summary": "Update a Todoist task",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "task_id": {
+                    "type": "string",
+                    "description": "The ID of the task to update"
+                  },
+                  "new_content": {
+                    "type": "string",
+                    "description": "The updated task content"
+                  }
+                },
+                "required": ["task_id", "new_content"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Task updated successfully"
           }
         }
       }
