@@ -2,7 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GPT Todoist Integration",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "description": "A simple API to allow a GPT to add tasks to a user's Todoist account"
   },
   "servers": [
     {
@@ -14,6 +15,8 @@
       "post": {
         "operationId": "addTask",
         "summary": "Add a task to Todoist",
+        "description": "Creates a new task in the user's Todoist account",
+        "tags": ["Tasks"],
         "parameters": [
           {
             "name": "x-api-key",
