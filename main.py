@@ -1,6 +1,6 @@
 import os
 import json
-from fastapi import FastAPI, Header, HTTPException, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
@@ -35,8 +35,10 @@ def extract_labels(xml_root):
     # Priority
     priority_map = {"P1": "p1", "P2": "p2", "P3": "p3"}
     priority = xml_root.findtext(".//priority")
+    todoist_priority = 1
     if priority and priority.strip().upper() in priority_map:
         labels.append(priority_map[priority.strip().upper()])
+        todoist_priority = {"P1": 4, "P2": 3, "P3": 2}.get(priority.strip().upper(), 1)
 
     # Fixed Version → MR label
     fixed_version = xml_root.findtext(".//fixVersion")
@@ -59,7 +61,7 @@ def extract_labels(xml_root):
     if component:
         labels.append(component.strip().lower())
 
-    return list(set(labels))  # remove duplicates
+    return list(set(labels)), todoist_priority  # remove duplicates
 
 def build_task_description(xml_root):
     ticket_id = xml_root.findtext(".//key")
@@ -122,16 +124,9 @@ def build_task_description(xml_root):
 """
     return description_block
 
-# === API Input Model ===
-class JiraTaskRequest(BaseModel):
-    due_date: str | None = None
-
 # === API Endpoint ===
 @app.post("/add_task")
-async def add_task(file: UploadFile = File(...), x_api_key: str = Header(...), data: JiraTaskRequest = None):
-    if x_api_key != "test_api_key":
-        raise HTTPException(status_code=403, detail="Forbidden")
-
+async def add_task(file: UploadFile = File(...)):
     content = await file.read()
     try:
         root = ET.fromstring(content)
@@ -140,15 +135,15 @@ async def add_task(file: UploadFile = File(...), x_api_key: str = Header(...), d
 
     title = root.findtext(".//summary") or "Untitled Task"
     description = build_task_description(root)
-    labels = extract_labels(root)
-    due_date = data.due_date if data and data.due_date else get_next_friday()
+    labels, todoist_priority = extract_labels(root)
+    due_date = get_next_friday()
 
     payload = {
         "content": title,
         "description": description,
         "due_date": due_date,
         "labels": labels,
-        "priority": 3
+        "priority": todoist_priority
     }
 
     headers = {
