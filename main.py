@@ -5,21 +5,20 @@ from pydantic import BaseModel
 from datetime import datetime, timedelta
 import xml.etree.ElementTree as ET
 import requests
-
-# === ENVIRONMENT SETUP ===
 from dotenv import load_dotenv
+
 load_dotenv()
 
 TODOIST_API_TOKEN = os.getenv("TODOIST_API_TOKEN")
 
-# === FASTAPI APP ===
 app = FastAPI(
     title="GPT Todoist Integration",
     version="1.0.0",
     description="A simple API to allow a GPT to add tasks to a user's Todoist account"
 )
 
-# === UTILITIES ===
+# === Utilities ===
+
 def get_next_friday():
     today = datetime.now()
     days_ahead = 4 - today.weekday()
@@ -39,7 +38,7 @@ def extract_labels(xml_root):
     if priority and priority.strip().upper() in priority_map:
         labels.append(priority_map[priority.strip().upper()])
 
-    # Fixed Version → MR tag
+    # Fixed Version → MR label
     fixed_version = xml_root.findtext(".//fixVersion")
     if fixed_version and "TF-" in fixed_version:
         mr = fixed_version.split("-")[-1].lower()
@@ -50,15 +49,17 @@ def extract_labels(xml_root):
     if issue_type:
         labels.append(issue_type.strip().lower())
 
-    # Status & Component (optional)
+    # Status
     status = xml_root.findtext(".//status")
     if status:
         labels.append(status.strip().lower())
+
+    # Component
     component = xml_root.findtext(".//component")
     if component:
         labels.append(component.strip().lower())
 
-    return list(set(labels))  # no duplicates
+    return list(set(labels))  # remove duplicates
 
 def build_task_description(xml_root):
     ticket_id = xml_root.findtext(".//key")
@@ -72,10 +73,15 @@ def build_task_description(xml_root):
     # Related Issues
     related_links = xml_root.findall(".//issuelink")
     related_items = []
+    client_links = []
     for link in related_links:
         key = link.findtext(".//issuekey")
         if key:
-            related_items.append(f"https://atyponjira.atlassian.net/browse/{key}")
+            link_url = f"https://atyponjira.atlassian.net/browse/{key}"
+            if key.startswith("TFO"):
+                client_links.append(f"[{key}]({link_url})")
+            else:
+                related_items.append(f"[{key}]({link_url})")
 
     # Comments
     comment_nodes = xml_root.findall(".//comment")
@@ -86,18 +92,23 @@ def build_task_description(xml_root):
     # Ticket link
     ticket_url = f"https://atyponjira.atlassian.net/browse/{ticket_id}"
 
-    # Build Description
+    # Build description
     description_block = f"""\
 **JIRA Ticket**: [{ticket_id}]({ticket_url})  
 **Summary**: {summary.strip() if summary else 'N/A'}
+
+**Client Tickets**:  
+{chr(10).join(client_links) if client_links else 'None'}
+
+**Related Tickets**:  
+{chr(10).join(related_items) if related_items else 'None'}
+
+---
 
 **Assignee**: {assignee or 'Unassigned'}  
 **Reporter**: {reporter or 'N/A'}  
 **Created**: {created or 'N/A'}  
 **Updated**: {updated or 'N/A'}
-
-**Related Tickets**:  
-{chr(10).join(related_items) if related_items else 'None'}
 
 ---
 
@@ -111,40 +122,33 @@ def build_task_description(xml_root):
 """
     return description_block
 
-# === API MODEL ===
+# === API Input Model ===
 class JiraTaskRequest(BaseModel):
     due_date: str | None = None
 
-# === API ENDPOINT ===
-@app.post("/add_task_from_jira")
-async def add_task_from_jira(file: UploadFile = File(...), x_api_key: str = Header(...), data: JiraTaskRequest = None):
-    # Check API key
+# === API Endpoint ===
+@app.post("/add_task")
+async def add_task(file: UploadFile = File(...), x_api_key: str = Header(...), data: JiraTaskRequest = None):
     if x_api_key != "test_api_key":
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # Parse uploaded file
     content = await file.read()
     try:
         root = ET.fromstring(content)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid XML format")
 
-    # Extract info
     title = root.findtext(".//summary") or "Untitled Task"
     description = build_task_description(root)
     labels = extract_labels(root)
-
-    # Get due date
     due_date = data.due_date if data and data.due_date else get_next_friday()
 
-    # Create Todoist task
     payload = {
         "content": title,
         "description": description,
         "due_date": due_date,
         "labels": labels,
-        "priority": 3,  # default priority
-        "assignee_id": None  # will be assigned automatically in Todoist by default
+        "priority": 3
     }
 
     headers = {
@@ -153,7 +157,10 @@ async def add_task_from_jira(file: UploadFile = File(...), x_api_key: str = Head
     }
 
     response = requests.post("https://api.todoist.com/rest/v2/tasks", json=payload, headers=headers)
-    if response.status_code != 200 and response.status_code != 204:
+    if response.status_code not in [200, 204]:
         raise HTTPException(status_code=response.status_code, detail=response.text)
 
-    return {"message": "Task created successfully", "todoist_response": response.json() if response.content else None}
+    return {
+        "message": "Task created successfully",
+        "todoist_response": response.json() if response.content else None
+    }
