@@ -22,9 +22,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "task_summary": {
+                  "content": {
                     "type": "string",
-                    "description": "The title of the task"
+                    "description": "The content of the task (title)"
                   },
                   "task_description": {
                     "type": "string",
@@ -42,7 +42,7 @@
                     "description": "Labels to apply to the task"
                   }
                 },
-                "required": ["task_summary"]
+                "required": ["content"]
               }
             }
           }
