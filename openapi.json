@@ -24,25 +24,29 @@
                 "properties": {
                   "content": {
                     "type": "string",
-                    "description": "The content of the task (title)"
+                    "description": "The title of the task"
                   },
-                  "task_description": {
+                  "description": {
                     "type": "string",
-                    "description": "A markdown-formatted description of the task"
+                    "description": "The markdown-formatted body of the task"
                   },
                   "due_date": {
                     "type": "string",
-                    "description": "Due date (e.g. 'tomorrow', 'next Friday')"
+                    "description": "Due date (e.g. 'next Friday')"
                   },
                   "labels": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "Labels to apply to the task"
+                    "description": "Labels to apply"
+                  },
+                  "priority": {
+                    "type": "integer",
+                    "description": "Priority level (1–4)"
                   }
                 },
-                "required": ["content"]
+                "required": ["content", "description"]
               }
             }
           }
