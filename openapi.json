@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GPT Todoist Integration",
-    "version": "1.0.0",
-    "description": "A simple API to allow a GPT to add tasks to a user's Todoist account"
+    "version": "1.1.0",
+    "description": "A simple API to allow a GPT to add tasks to a user's Todoist account using parsed JIRA XML data"
   },
   "servers": [
     {
@@ -14,7 +14,7 @@
     "/add_task": {
       "post": {
         "operationId": "addTask",
-        "summary": "Add a task to Todoist",
+        "summary": "Add a task to Todoist from a JIRA ticket",
         "requestBody": {
           "required": true,
           "content": {
@@ -22,20 +22,71 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "task_name": {
+                  "ticket_id": {
                     "type": "string",
-                    "description": "The content of the task"
+                    "description": "The JIRA ticket number (e.g. LIT-123456)"
                   },
-                  "due_date": {
+                  "summary": {
                     "type": "string",
-                    "description": "Due date (e.g. 'tomorrow', 'next Monday')"
+                    "description": "The title of the JIRA ticket"
                   },
                   "description": {
                     "type": "string",
-                    "description": "Optional detailed description of the task"
+                    "description": "A summarized version of the JIRA ticket's description and comments"
+                  },
+                  "jira_link": {
+                    "type": "string",
+                    "description": "Link to the JIRA ticket"
+                  },
+                  "assignee": {
+                    "type": "string",
+                    "description": "Assignee of the JIRA ticket"
+                  },
+                  "reporter": {
+                    "type": "string",
+                    "description": "Reporter of the JIRA ticket"
+                  },
+                  "created": {
+                    "type": "string",
+                    "description": "JIRA ticket created date"
+                  },
+                  "updated": {
+                    "type": "string",
+                    "description": "JIRA ticket last updated date"
+                  },
+                  "fixed_version": {
+                    "type": "string",
+                    "description": "Fixed Version of the ticket, used for MR label assignment"
+                  },
+                  "priority": {
+                    "type": "string",
+                    "description": "JIRA ticket priority, e.g. P1, P2, P3"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "JIRA issue type, e.g. bug, story"
+                  },
+                  "status": {
+                    "type": "string",
+                    "description": "Current status of the JIRA ticket"
+                  },
+                  "component": {
+                    "type": "string",
+                    "description": "Component affected in the JIRA ticket"
+                  },
+                  "related_tickets": {
+                    "type": "array",
+                    "description": "List of related JIRA ticket links (e.g. LIT-xxxxx or TFO-xxxxx)",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "due_date": {
+                    "type": "string",
+                    "description": "Optional due date for the Todoist task (e.g. 'next Friday')"
                   }
                 },
-                "required": ["task_name"]
+                "required": ["ticket_id", "summary", "description"]
               }
             }
           }
@@ -43,49 +94,9 @@
         "responses": {
           "200": {
             "description": "Task successfully added"
-          }
-        }
-      }
-    },
-    "/list_tasks": {
-      "get": {
-        "operationId": "listTasks",
-        "summary": "List all Todoist tasks",
-        "responses": {
-          "200": {
-            "description": "List of tasks"
-          }
-        }
-      }
-    },
-    "/update_task": {
-      "post": {
-        "operationId": "updateTask",
-        "summary": "Update a Todoist task",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "task_id": {
-                    "type": "string",
-                    "description": "The ID of the task to update"
-                  },
-                  "new_content": {
-                    "type": "string",
-                    "description": "The updated task content"
-                  }
-                },
-                "required": ["task_id", "new_content"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Task updated successfully"
+          },
+          "403": {
+            "description": "Forbidden - likely due to missing or invalid Todoist API key"
           }
         }
       }
