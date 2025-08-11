@@ -2,49 +2,62 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>JIRA → Todoist</title>
+  <title>JIRA XML → Todoist Task</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 30px; }
-    .box { border: 2px dashed #ccc; padding: 20px; border-radius: 12px; margin-bottom: 16px; }
-    .box.drag { border-color: #0077ff; background: #f4f9ff; }
-    textarea { width: 100%; height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    button { padding: 10px 16px; border-radius: 10px; border: 0; background: #111; color:#fff; cursor: pointer; }
-    button:disabled { opacity: .6; cursor: not-allowed; }
-    .row { display: flex; gap: 12px; align-items: center; }
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 28px; }
+    h1 { margin: 0 0 10px; }
     .muted { color: #666; font-size: 13px; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .box { border: 2px dashed #ccc; padding: 18px; border-radius: 12px; margin: 14px 0; }
+    .box.drag { border-color: #0a7cff; background: #f4f9ff; }
+    textarea { width: 100%; height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; padding: 10px; border-radius: 10px; border: 1px solid #ccc; }
+    input[type="text"] { padding: 9px; border-radius: 8px; border: 1px solid #ccc; }
+    button { padding: 10px 16px; border-radius: 10px; border: 0; background: #111; color:#fff; cursor: pointer; }
+    button.secondary { background: #444; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
     .out { white-space: pre-wrap; background: #fafafa; border:1px solid #eee; padding:12px; border-radius:10px; }
   </style>
 </head>
 <body>
   <h1>JIRA XML → Todoist Task</h1>
-  <p class="muted">Drop a JIRA XML file or paste XML below. Choose create or update, then submit.</p>
+  <p class="muted">Drop a JIRA XML file or paste XML below. Choose create or update, then compile and/or send.</p>
 
   <div id="drop" class="box">Drop XML file here</div>
-
-  <textarea id="xml" placeholder="...or paste JIRA XML here"></textarea>
+  <textarea id="xml" placeholder="…or paste JIRA XML here"></textarea>
 
   <div class="row" style="margin:12px 0;">
     <label><input type="radio" name="mode" value="create" checked> Create task</label>
     <label><input type="radio" name="mode" value="update"> Update task</label>
-    <input id="task_id" placeholder="Task ID (for update)" style="flex:0 0 220px; padding:8px; border-radius:8px; border:1px solid #ccc;">
+    <input id="task_id" placeholder="Task ID (for update)" style="flex:0 0 260px;">
   </div>
 
-  <div class="row">
-    <button id="go">Submit</button>
+  <div class="row" style="margin:12px 0;">
+    <button id="compileBtn" class="secondary">Compile Only</button>
+    <button id="sendReviewBtn">Send After Review</button>
+    <button id="compileSendBtn">Compile & Send</button>
     <span id="status" class="muted"></span>
   </div>
 
-  <h3>Result</h3>
+  <h3>Compiled Result</h3>
   <div id="result" class="out"></div>
+
+  <h3>Reviewed Payload (Editable)</h3>
+  <textarea id="reviewPayload" placeholder='Will appear after "Compile Only"…'></textarea>
 
 <script>
 const drop = document.getElementById('drop');
 const xmlTa = document.getElementById('xml');
-const go = document.getElementById('go');
 const statusEl = document.getElementById('status');
 const result = document.getElementById('result');
 const taskIdInput = document.getElementById('task_id');
+const compileBtn = document.getElementById('compileBtn');
+const sendReviewBtn = document.getElementById('sendReviewBtn');
+const compileSendBtn = document.getElementById('compileSendBtn');
+const reviewPayload = document.getElementById('reviewPayload');
+
+let compiledPayload = null;
 
 ['dragenter','dragover'].forEach(evt => drop.addEventListener(evt, e => {
   e.preventDefault(); e.stopPropagation(); drop.classList.add('drag');
@@ -59,6 +72,10 @@ drop.addEventListener('drop', async (e) => {
   xmlTa.value = text;
 });
 
+function getMode() {
+  return document.querySelector('input[name="mode"]:checked').value;
+}
+
 async function postJSON(url, body) {
   const res = await fetch(url, {
     method: 'POST',
@@ -66,27 +83,93 @@ async function postJSON(url, body) {
     body: JSON.stringify(body)
   });
   const text = await res.text();
-  try { return { ok: res.ok, status: res.status, json: JSON.parse(text) }; }
-  catch { return { ok: res.ok, status: res.status, json: { raw: text } }; }
+  let json;
+  try { json = JSON.parse(text); } catch(e) { json = { raw: text }; }
+  return { ok: res.ok, status: res.status, json };
 }
 
-go.addEventListener('click', async () => {
+// Compile Only
+compileBtn.addEventListener('click', async () => {
   const xml = xmlTa.value.trim();
-  const mode = document.querySelector('input[name="mode"]:checked').value;
-  const task_id = taskIdInput.value.trim() || undefined;
-
   if (!xml) { alert('Please paste XML or drop a file.'); return; }
 
   statusEl.textContent = 'Compiling…';
-  go.disabled = true; result.textContent = '';
+  result.textContent = '';
+  reviewPayload.value = '';
+  compiledPayload = null;
+
+  const r = await postJSON('/compile_task_from_xml', { xml });
+  statusEl.textContent = r.ok ? 'Compiled.' : `Error (${r.status})`;
+
+  result.textContent = JSON.stringify(r.json, null, 2);
+  if (r.ok) {
+    compiledPayload = r.json;
+    reviewPayload.value = JSON.stringify(compiledPayload, null, 2);
+  }
+});
+
+// Send After Review (uses edited JSON)
+sendReviewBtn.addEventListener('click', async () => {
+  if (!reviewPayload.value.trim()) {
+    alert('No compiled payload to send. Click “Compile Only” first.'); return;
+  }
+  // Parse edited JSON
+  let edited;
+  try { edited = JSON.parse(reviewPayload.value); }
+  catch { alert('Edited payload is not valid JSON.'); return; }
+
+  if (!edited.content || !edited.description) {
+    alert('Payload needs at least "content" and "description".'); return;
+  }
+
+  const mode = getMode();
+  const task_id = taskIdInput.value.trim();
+
+  statusEl.textContent = 'Sending…';
+  result.textContent = '';
+
+  let r;
+  if (mode === 'update' && task_id) {
+    const updateBody = {
+      task_id,
+      content: edited.content,
+      description: edited.description,
+      due_date: edited.due_date,
+      labels: edited.labels,
+      priority: edited.priority
+    };
+    r = await postJSON('/update_task', updateBody);
+  } else {
+    r = await postJSON('/add_task', edited);
+  }
+
+  statusEl.textContent = r.ok ? 'Sent.' : `Error (${r.status})`;
+  result.textContent = JSON.stringify(r.json, null, 2);
+});
+
+// Compile & Send (one go)
+compileSendBtn.addEventListener('click', async () => {
+  const xml = xmlTa.value.trim();
+  if (!xml) { alert('Please paste XML or drop a file.'); return; }
+
+  const mode = getMode();
+  const task_id = taskIdInput.value.trim();
+
+  statusEl.textContent = 'Compiling & sending…';
+  result.textContent = '';
 
   const body = { xml };
   if (mode === 'update' && task_id) body.task_id = task_id;
 
   const r = await postJSON('/create_task_from_xml', body);
-  go.disabled = false;
+
   statusEl.textContent = r.ok ? 'Done.' : `Error (${r.status})`;
   result.textContent = JSON.stringify(r.json, null, 2);
+
+  // Also hydrate the editable area if API returned compiled payload (best-effort)
+  if (mode === 'create' && r.ok && r.json && r.json.todoist_response) {
+    // no compiled payload returned by that endpoint; keep as-is
+  }
 });
 </script>
 </body>
