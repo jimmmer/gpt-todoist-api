@@ -172,12 +172,12 @@ from fastapi.staticfiles import StaticFiles
 
 # OpenAI SDK (Responses API with structured outputs)
 # Docs: https://platform.openai.com/docs/api-reference/chat/create  https://openai.com/index/introducing-structured-outputs-in-the-api/
+# --- OpenAI setup (replace your existing OpenAI bits with this) ---
 from openai import OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# JSON schema the model must output
-TASK_SCHEMA: Dict[str, Any] = {
+TASK_SCHEMA = {
     "name": "TaskPayload",
     "schema": {
         "type": "object",
@@ -195,10 +195,10 @@ TASK_SCHEMA: Dict[str, Any] = {
 
 def format_instructions_for_model(xml_snippet: str) -> str:
     return f"""
-You are an API that converts JIRA XML to a Todoist task JSON payload.
+You convert JIRA XML to a Todoist task JSON payload.
 
 Rules:
-- Extract title from <summary> to 'content'.
+- Extract title from <summary> into 'content'.
 - Build a markdown 'description' with this layout (keep links clickable):
   **JIRA Ticket**: [KEY](https://atyponjira.atlassian.net/browse/KEY)
   **Reporter**: ...
@@ -222,16 +222,16 @@ Rules:
   **Action Required**
   (one sentence)
 
-- Labels: prefer existing labels when possible (respect capitalization):
+- Labels: prefer existing labels (respect capitalization):
   Urgent, 2024-MR6, 2024-MR7, 2024-MR8, PB Configs, CR, Improvement, Inquiry,
   Bug, Task, Discovery, Implementation, QA/Testing, RFR, Waiting On Feedback,
   E-Reader, Analytics, Help, Reminder, Internal.
 - Priority mapping: P1→priority 4 (+ label 'Urgent' if appropriate), P2→3, P3→2, default→1.
-- Type/status/component: map to existing labels when possible (e.g., Bug, Task, Implementation,
+- Type/status/component: map to existing labels when possible (Bug, Task, Implementation,
   Waiting On Feedback, Internal, Analytics, E-Reader). Create a new label only if no close match exists.
-- Fixed Version: if like "lit-2410-tandf-6.0" → label preference:
+- Fixed Version: if like "lit-2410-tandf-6.0":
     1) If a '2024-MR6' label exists, use that.
-    2) Else, use '2410 MR6'. Remove lowercase prefixes/words and dashes.
+    2) Else use '2410 MR6'. Remove lowercase prefixes/words and dashes.
 - due_date: use YYYY-MM-DD; if missing, set to next Friday.
 - Output MUST match the JSON schema exactly.
 
@@ -239,33 +239,30 @@ JIRA XML:
 {xml_snippet}
 """.strip()
 
-def compile_task_payload_from_xml(xml_text: str) -> Dict[str, Any]:
+def compile_task_payload_from_xml(xml_text: str) -> dict:
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured.")
 
-    # Use Responses API with structured outputs
-    resp = ai_client.responses.create(
-        model="gpt-5-mini",
-        input=format_instructions_for_model(xml_text),
+    # Use Chat Completions with structured outputs
+    resp = ai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a careful API that returns strictly valid JSON."},
+            {"role": "user", "content": format_instructions_for_model(xml_text)}
+        ],
         response_format={ "type": "json_schema", "json_schema": TASK_SCHEMA },
+        temperature=0
     )
-    # Unified text output + safety
+
+    payload_text = resp.choices[0].message.content or ""
     try:
-        payload = resp.output[0].content[0].text  # SDK evolves; fallback if needed
-    except Exception:
-        # More robust extraction
-        payload = getattr(resp, "output_text", None) or json.dumps(getattr(resp, "output", {}))
-    try:
-        data = json.loads(payload)
+        data = json.loads(payload_text)
     except Exception:
         raise HTTPException(status_code=502, detail="AI returned invalid JSON payload.")
 
-    # Default due date if missing
     if not data.get("due_date"):
         data["due_date"] = get_next_friday()
-    # Ensure labels list exists
     data["labels"] = data.get("labels") or []
-    # Ensure priority int
     p = data.get("priority")
     if p is None or not isinstance(p, int) or p < 1 or p > 4:
         data["priority"] = 1
