@@ -181,12 +181,29 @@ TASK_SCHEMA = {
     "name": "TaskPayload",
     "schema": {
         "type": "object",
+        "additionalProperties": False,   # 👈 required by structured outputs
         "properties": {
-            "content": {"type": "string", "description": "Task title"},
-            "description": {"type": "string", "description": "Markdown body"},
-            "due_date": {"type": "string", "description": "YYYY-MM-DD; default to next Friday if missing"},
-            "labels": {"type": "array", "items": {"type": "string"}},
-            "priority": {"type": "integer", "minimum": 1, "maximum": 4}
+            "content": {
+                "type": "string",
+                "description": "Task title"
+            },
+            "description": {
+                "type": "string",
+                "description": "Markdown body"
+            },
+            "due_date": {
+                "type": "string",
+                "description": "YYYY-MM-DD; default to next Friday if missing"
+            },
+            "labels": {
+                "type": "array",
+                "items": { "type": "string" }
+            },
+            "priority": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4
+            }
         },
         "required": ["content", "description"]
     },
