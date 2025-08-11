@@ -1,0 +1,245 @@
+Git + Render Command Cheat Sheet (gpt‑todoist)
+
+Replace placeholders like <YOUR_SERVICE_NAME> and <BRANCH> with your actual values.
+
+⸻
+
+1) One‑time setup
+
+# Configure your identity (once per machine)
+git config --global user.name "James Brown"
+git config --global user.email "you@example.com"
+
+# Set your preferred pull strategy (pick one)
+# Merge (default style)
+git config --global pull.rebase false
+# or Rebase (linear history)
+# git config --global pull.rebase true
+# or Only fast‑forward (fail if merge needed)
+# git config --global pull.ff only
+
+
+⸻
+
+2) Getting code
+
+# Clone the repo (first time on a machine)
+git clone https://github.com/jimmmer/gpt-todoist-api.git
+cd gpt-todoist-api
+
+# See current status
+git status
+
+# Fetch latest commits from GitHub (no changes to your files)
+git fetch origin
+
+# Pull latest into current branch (merge strategy)
+git pull --no-rebase origin main
+# or rebase:
+# git pull --rebase origin main
+
+Force local to match GitHub (danger: discards local changes):
+
+git fetch origin
+git reset --hard origin/main
+
+
+⸻
+
+3) Making & saving changes
+
+# See what changed
+git status
+
+# Stage specific files
+git add main.py openapi.json
+# or everything
+# git add .
+
+# Commit with a message
+git commit -m "Update API and OpenAPI spec"
+
+# Push to GitHub
+git push origin main
+
+Amend last commit message (nothing else changed):
+
+git commit --amend -m "Better message"
+
+Undo local changes (since last commit):
+
+# Discard changes in a file
+git checkout -- path/to/file
+# Discard all unstaged changes
+git reset --hard
+
+Stash (park) local work temporarily:
+
+git stash push -m "work in progress"
+# bring it back later
+git stash pop
+
+
+⸻
+
+4) Branches (optional)
+
+# Create + switch
+git checkout -b feature/add-labels
+
+# Switch back
+git checkout main
+
+# Push branch
+git push -u origin feature/add-labels
+
+
+⸻
+
+5) Inspecting history & diffs
+
+# Compact history graph
+git log --oneline --graph --decorate --all | head -n 30
+
+# Diff your working tree vs last commit
+git diff
+
+# Diff staged vs last commit
+git diff --cached
+
+
+⸻
+
+6) Common pull conflict resolution
+
+# Pull (merge) and you get conflicts
+# 1) Open files, fix conflict markers <<<<<<< ======= >>>>>>>
+# 2) Mark as resolved
+git add <file> ...
+# 3) Complete the merge
+git commit
+
+For rebase conflicts:
+
+# After fixing files:
+git add <file> ...
+git rebase --continue
+
+
+⸻
+
+7) Render CLI (deployment & logs)
+
+Install & login:
+
+# Install (macOS)
+brew install render
+
+# Login (opens browser)
+render login
+
+List services & details:
+
+render services list
+render services get <YOUR_SERVICE_NAME>
+
+Deploy & logs:
+
+# Trigger a deploy of the latest Git commit
+render deploys create --service <YOUR_SERVICE_NAME>
+
+# Stream logs
+render logs --service <YOUR_SERVICE_NAME> --follow
+
+# Show recent deploys
+render deploys list --service <YOUR_SERVICE_NAME>
+
+Env vars (make sure TODOIST_API_TOKEN is set):
+
+# View
+render env vars list --service <YOUR_SERVICE_NAME>
+# Set/update
+ender env vars set --service <YOUR_SERVICE_NAME> TODOIST_API_TOKEN=xxxxxxx
+# Remove
+render env vars delete --service <YOUR_SERVICE_NAME> TODOIST_API_TOKEN
+
+Manual health checks / curl tests:
+
+# Root
+curl -s https://gpt-todoist.onrender.com/
+
+# Create task (JSON)
+curl -s -X POST https://gpt-todoist.onrender.com/add_task \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "content": "Quick test task",
+    "description": "Created via curl",
+    "due_date": "2025-08-15",
+    "labels": ["Internal"],
+    "priority": 3
+  }'
+
+# List tasks (from your API if implemented)
+curl -s https://gpt-todoist.onrender.com/tasks | jq '.'
+
+# Get a specific task
+curl -s https://gpt-todoist.onrender.com/tasks/<TASK_ID> | jq '.'
+
+# Update a task
+curl -s -X POST https://gpt-todoist.onrender.com/update_task \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "task_id": "<TASK_ID>",
+    "description": "Updated via API",
+    "priority": 3
+  }'
+
+
+⸻
+
+8) Todoist direct API (bypass your server)
+
+# List labels directly from Todoist
+curl -s -X GET https://api.todoist.com/rest/v2/labels \
+  -H "Authorization: Bearer $TODOIST_API_TOKEN" | jq '.[].name'
+
+# Create a task directly
+curl -s -X POST https://api.todoist.com/rest/v2/tasks \
+  -H "Authorization: Bearer $TODOIST_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "content": "Direct Todoist task",
+    "description": "From curl",
+    "due_date": "2025-08-15",
+    "labels": ["Internal"],
+    "priority": 3
+  }'
+
+
+⸻
+
+9) Quick troubleshooting checklist
+	•	Deploy failed on Render? Check build & runtime logs:
+	•	Missing env var TODOIST_API_TOKEN?
+	•	Python errors in main.py?
+	•	requirements.txt includes: fastapi, uvicorn, requests, python-dotenv?
+	•	GPT fails to call API?
+	•	Confirm OpenAPI URL points to raw GitHub file and matches endpoints (/add_task, /tasks, /update_task).
+	•	Ensure request body fields match your schema (content, description, due_date, labels, priority).
+	•	Todoist rejects due date? Use YYYY-MM-DD (not phrases like “next Friday”).
+	•	Priority ignored? Must be integer 1–4.
+
+⸻
+
+10) Handy aliases (optional)
+
+Add to ~/.zshrc:
+
+alias gpl='git pull --no-rebase origin main'
+alias gps='git push origin main'
+alias glog="git log --oneline --graph --decorate --all | head -n 30"
+
+
+⸻
+
+Need me to fill in your actual <YOUR_SERVICE_NAME> or tailor commands for your exact branch layout? Let me know and I’ll adjust this doc.

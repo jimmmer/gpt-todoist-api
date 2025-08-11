@@ -35,7 +35,15 @@ class TaskRequest(BaseModel):
     due_date: Optional[str] = None
     labels: Optional[List[str]] = None
 
-# === Endpoint ===
+class UpdateTaskRequest(BaseModel):
+    task_id: str
+    content: Optional[str] = None
+    description: Optional[str] = None
+    due_date: Optional[str] = None
+    labels: Optional[List[str]] = None
+    priority: Optional[int] = None
+
+# === POST Endpoints ===
 
 @app.post("/add_task")
 async def add_task(request: TaskRequest):
@@ -62,49 +70,6 @@ async def add_task(request: TaskRequest):
         "message": "Task created successfully",
         "todoist_response": response.json() if response.content else None
     }
-
-# === Additional Endpoints ===
-
-@app.get("/tasks")
-async def list_tasks(project_id: Optional[str] = None,
-                     label: Optional[str] = None,
-                     filter: Optional[str] = None):
-    """
-    List Todoist tasks. Optional filters mirror Todoist API:
-    - project_id: filter by project
-    - label: filter by label name
-    - filter: advanced Todoist filter query (e.g., "today | overdue")
-    """
-    if not TODOIST_API_TOKEN:
-        raise HTTPException(status_code=500, detail="Todoist API token not configured.")
-
-    headers = {
-        "Authorization": f"Bearer {TODOIST_API_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    params = {}
-    if project_id:
-        params["project_id"] = project_id
-    if label:
-        params["label"] = label
-    if filter:
-        params["filter"] = filter
-
-    resp = requests.get("https://api.todoist.com/rest/v2/tasks", headers=headers, params=params)
-    if resp.status_code != 200:
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
-    return resp.json()
-
-
-class UpdateTaskRequest(BaseModel):
-    task_id: str
-    content: Optional[str] = None
-    description: Optional[str] = None
-    due_date: Optional[str] = None
-    labels: Optional[List[str]] = None
-    priority: Optional[int] = None
 
 @app.post("/update_task")
 async def update_task(req: UpdateTaskRequest):
@@ -147,6 +112,39 @@ async def update_task(req: UpdateTaskRequest):
 
     return {"message": "Task updated successfully", "task_id": req.task_id}
 
+# === GET Endpoints ===
+
+@app.get("/tasks")
+async def list_tasks(project_id: Optional[str] = None,
+                     label: Optional[str] = None,
+                     filter: Optional[str] = None):
+    """
+    List Todoist tasks. Optional filters mirror Todoist API:
+    - project_id: filter by project
+    - label: filter by label name
+    - filter: advanced Todoist filter query (e.g., "today | overdue")
+    """
+    if not TODOIST_API_TOKEN:
+        raise HTTPException(status_code=500, detail="Todoist API token not configured.")
+
+    headers = {
+        "Authorization": f"Bearer {TODOIST_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    params = {}
+    if project_id:
+        params["project_id"] = project_id
+    if label:
+        params["label"] = label
+    if filter:
+        params["filter"] = filter
+
+    resp = requests.get("https://api.todoist.com/rest/v2/tasks", headers=headers, params=params)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+    return resp.json()
 
 @app.get("/tasks/{task_id}")
 async def get_task(task_id: str):
