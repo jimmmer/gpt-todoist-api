@@ -2,66 +2,164 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GPT Todoist Integration",
-    "version": "1.0.0",
-    "description": "A simple API to allow a GPT to add tasks to a user's Todoist account"
+    "version": "1.2.0",
+    "description": "Endpoints for creating, listing, fetching, and updating Todoist tasks."
   },
   "servers": [
-    {
-      "url": "https://gpt-todoist.onrender.com"
-    }
+    { "url": "https://gpt-todoist.onrender.com" }
   ],
   "paths": {
     "/add_task": {
       "post": {
         "operationId": "addTask",
-        "summary": "Add a task to Todoist",
+        "summary": "Create a Todoist task",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "content": {
-                    "type": "string",
-                    "description": "The title of the task"
-                  },
-                  "description": {
-                    "type": "string",
-                    "description": "The markdown-formatted body of the task"
-                  },
-                  "due_date": {
-                    "type": "string",
-                    "description": "Due date (e.g. 'next Friday')"
-                  },
-                  "labels": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "Labels to apply"
-                  },
-                  "priority": {
-                    "type": "integer",
-                    "description": "Priority level (1–4)"
-                  }
-                },
-                "required": ["content", "description"]
+                "$ref": "#/components/schemas/TaskCreate"
               }
             }
           }
         },
         "responses": {
-          "200": {
-            "description": "Task successfully added"
-          },
-          "400": {
-            "description": "Invalid request format"
-          },
-          "403": {
-            "description": "Forbidden or unauthorized"
-          }
+          "200": { "description": "Task created successfully" },
+          "400": { "description": "Invalid request" },
+          "500": { "description": "Server or Todoist error" }
         }
+      }
+    },
+    "/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "summary": "List Todoist tasks",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Filter by project ID"
+          },
+          {
+            "name": "label",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Filter by label name"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Todoist filter query (e.g., \"today | overdue\")"
+          }
+        ],
+        "responses": {
+          "200": { "description": "List of tasks returned" },
+          "500": { "description": "Server or Todoist error" }
+        }
+      }
+    },
+    "/tasks/{task_id}": {
+      "get": {
+        "operationId": "getTask",
+        "summary": "Get a single task by ID",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Task returned" },
+          "404": { "description": "Task not found" },
+          "500": { "description": "Server or Todoist error" }
+        }
+      }
+    },
+    "/update_task": {
+      "post": {
+        "operationId": "updateTask",
+        "summary": "Update a Todoist task",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TaskUpdate" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Task updated successfully" },
+          "400": { "description": "No updatable fields provided or bad input" },
+          "404": { "description": "Task not found" },
+          "500": { "description": "Server or Todoist error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TaskCreate": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Task title"
+          },
+          "task_description": {
+            "type": "string",
+            "description": "Markdown body for the task"
+          },
+          "due_date": {
+            "type": "string",
+            "description": "YYYY-MM-DD (defaults to next Friday if omitted)"
+          },
+          "labels": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Todoist labels to apply"
+          }
+        },
+        "required": ["content"]
+      },
+      "TaskUpdate": {
+        "type": "object",
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "description": "The Todoist task ID to update"
+          },
+          "content": {
+            "type": "string",
+            "description": "New title"
+          },
+          "description": {
+            "type": "string",
+            "description": "New markdown description"
+          },
+          "due_date": {
+            "type": "string",
+            "description": "New due date (YYYY-MM-DD)"
+          },
+          "labels": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Replace labels with this set"
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4,
+            "description": "Todoist priority (1–4)"
+          }
+        },
+        "required": ["task_id"]
       }
     }
   }
