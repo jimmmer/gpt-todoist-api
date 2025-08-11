@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>JIRA → Todoist</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 30px; }
+    .box { border: 2px dashed #ccc; padding: 20px; border-radius: 12px; margin-bottom: 16px; }
+    .box.drag { border-color: #0077ff; background: #f4f9ff; }
+    textarea { width: 100%; height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    button { padding: 10px 16px; border-radius: 10px; border: 0; background: #111; color:#fff; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .row { display: flex; gap: 12px; align-items: center; }
+    .muted { color: #666; font-size: 13px; }
+    .out { white-space: pre-wrap; background: #fafafa; border:1px solid #eee; padding:12px; border-radius:10px; }
+  </style>
+</head>
+<body>
+  <h1>JIRA XML → Todoist Task</h1>
+  <p class="muted">Drop a JIRA XML file or paste XML below. Choose create or update, then submit.</p>
+
+  <div id="drop" class="box">Drop XML file here</div>
+
+  <textarea id="xml" placeholder="...or paste JIRA XML here"></textarea>
+
+  <div class="row" style="margin:12px 0;">
+    <label><input type="radio" name="mode" value="create" checked> Create task</label>
+    <label><input type="radio" name="mode" value="update"> Update task</label>
+    <input id="task_id" placeholder="Task ID (for update)" style="flex:0 0 220px; padding:8px; border-radius:8px; border:1px solid #ccc;">
+  </div>
+
+  <div class="row">
+    <button id="go">Submit</button>
+    <span id="status" class="muted"></span>
+  </div>
+
+  <h3>Result</h3>
+  <div id="result" class="out"></div>
+
+<script>
+const drop = document.getElementById('drop');
+const xmlTa = document.getElementById('xml');
+const go = document.getElementById('go');
+const statusEl = document.getElementById('status');
+const result = document.getElementById('result');
+const taskIdInput = document.getElementById('task_id');
+
+['dragenter','dragover'].forEach(evt => drop.addEventListener(evt, e => {
+  e.preventDefault(); e.stopPropagation(); drop.classList.add('drag');
+}));
+['dragleave','drop'].forEach(evt => drop.addEventListener(evt, e => {
+  e.preventDefault(); e.stopPropagation(); drop.classList.remove('drag');
+}));
+drop.addEventListener('drop', async (e) => {
+  const file = e.dataTransfer.files?.[0];
+  if (!file) return;
+  const text = await file.text();
+  xmlTa.value = text;
+});
+
+async function postJSON(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const text = await res.text();
+  try { return { ok: res.ok, status: res.status, json: JSON.parse(text) }; }
+  catch { return { ok: res.ok, status: res.status, json: { raw: text } }; }
+}
+
+go.addEventListener('click', async () => {
+  const xml = xmlTa.value.trim();
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  const task_id = taskIdInput.value.trim() || undefined;
+
+  if (!xml) { alert('Please paste XML or drop a file.'); return; }
+
+  statusEl.textContent = 'Compiling…';
+  go.disabled = true; result.textContent = '';
+
+  const body = { xml };
+  if (mode === 'update' && task_id) body.task_id = task_id;
+
+  const r = await postJSON('/create_task_from_xml', body);
+  go.disabled = false;
+  statusEl.textContent = r.ok ? 'Done.' : `Error (${r.status})`;
+  result.textContent = JSON.stringify(r.json, null, 2);
+});
+</script>
+</body>
+</html>

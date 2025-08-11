@@ -162,3 +162,179 @@ async def get_task(task_id: str):
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
 
     return resp.json()
+
+# === AI compile + static page ===
+import os
+from typing import Dict, Any
+from fastapi import Body
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+
+# OpenAI SDK (Responses API with structured outputs)
+# Docs: https://platform.openai.com/docs/api-reference/chat/create  https://openai.com/index/introducing-structured-outputs-in-the-api/
+from openai import OpenAI
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+# JSON schema the model must output
+TASK_SCHEMA: Dict[str, Any] = {
+    "name": "TaskPayload",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "content": {"type": "string", "description": "Task title"},
+            "description": {"type": "string", "description": "Markdown body"},
+            "due_date": {"type": "string", "description": "YYYY-MM-DD; default to next Friday if missing"},
+            "labels": {"type": "array", "items": {"type": "string"}},
+            "priority": {"type": "integer", "minimum": 1, "maximum": 4}
+        },
+        "required": ["content", "description"]
+    },
+    "strict": True
+}
+
+def format_instructions_for_model(xml_snippet: str) -> str:
+    return f"""
+You are an API that converts JIRA XML to a Todoist task JSON payload.
+
+Rules:
+- Extract title from <summary> to 'content'.
+- Build a markdown 'description' with this layout (keep links clickable):
+  **JIRA Ticket**: [KEY](https://atyponjira.atlassian.net/browse/KEY)
+  **Reporter**: ...
+  **Assignee**: ...
+  **Created**: ...
+  **Updated**: ...
+
+  **Related Tickets**:
+  - [KEY](https://atyponjira.atlassian.net/browse/KEY)
+  - [KEY](https://atyponjira.atlassian.net/browse/KEY)
+
+  ---
+  **Summary**
+  (short paragraph)
+
+  ---
+  **Comments Summary**
+  - bullet points
+
+  ---
+  **Action Required**
+  (one sentence)
+
+- Labels: prefer existing labels when possible (respect capitalization):
+  Urgent, 2024-MR6, 2024-MR7, 2024-MR8, PB Configs, CR, Improvement, Inquiry,
+  Bug, Task, Discovery, Implementation, QA/Testing, RFR, Waiting On Feedback,
+  E-Reader, Analytics, Help, Reminder, Internal.
+- Priority mapping: P1→priority 4 (+ label 'Urgent' if appropriate), P2→3, P3→2, default→1.
+- Type/status/component: map to existing labels when possible (e.g., Bug, Task, Implementation,
+  Waiting On Feedback, Internal, Analytics, E-Reader). Create a new label only if no close match exists.
+- Fixed Version: if like "lit-2410-tandf-6.0" → label preference:
+    1) If a '2024-MR6' label exists, use that.
+    2) Else, use '2410 MR6'. Remove lowercase prefixes/words and dashes.
+- due_date: use YYYY-MM-DD; if missing, set to next Friday.
+- Output MUST match the JSON schema exactly.
+
+JIRA XML:
+{xml_snippet}
+""".strip()
+
+def compile_task_payload_from_xml(xml_text: str) -> Dict[str, Any]:
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured.")
+
+    # Use Responses API with structured outputs
+    resp = ai_client.responses.create(
+        model="gpt-5-mini",
+        input=format_instructions_for_model(xml_text),
+        response_format={ "type": "json_schema", "json_schema": TASK_SCHEMA },
+    )
+    # Unified text output + safety
+    try:
+        payload = resp.output[0].content[0].text  # SDK evolves; fallback if needed
+    except Exception:
+        # More robust extraction
+        payload = getattr(resp, "output_text", None) or json.dumps(getattr(resp, "output", {}))
+    try:
+        data = json.loads(payload)
+    except Exception:
+        raise HTTPException(status_code=502, detail="AI returned invalid JSON payload.")
+
+    # Default due date if missing
+    if not data.get("due_date"):
+        data["due_date"] = get_next_friday()
+    # Ensure labels list exists
+    data["labels"] = data.get("labels") or []
+    # Ensure priority int
+    p = data.get("priority")
+    if p is None or not isinstance(p, int) or p < 1 or p > 4:
+        data["priority"] = 1
+    return data
+
+@app.post("/compile_task_from_xml")
+def compile_task_from_xml(body: Dict[str, str] = Body(...)):
+    """
+    Accepts: { "xml": "<issue>...</issue>" }
+    Returns: { content, description, due_date, labels, priority }
+    """
+    xml_text = (body or {}).get("xml", "")
+    if not xml_text.strip():
+        raise HTTPException(status_code=400, detail="Missing 'xml' in request body.")
+    return compile_task_payload_from_xml(xml_text)
+
+@app.post("/create_task_from_xml")
+def create_task_from_xml(body: Dict[str, Any] = Body(...)):
+    """
+    Accepts:
+      { "xml": "<issue>...</issue>" }                    # create new
+      { "xml": "<issue>...</issue>", "task_id": "123" }  # update existing
+    """
+    xml_text = (body or {}).get("xml", "")
+    if not xml_text.strip():
+        raise HTTPException(status_code=400, detail="Missing 'xml' in request body.")
+
+    task_id = (body or {}).get("task_id")
+    compiled = compile_task_payload_from_xml(xml_text)
+
+    headers = {
+        "Authorization": f"Bearer {TODOIST_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    if not TODOIST_API_TOKEN:
+        raise HTTPException(status_code=500, detail="TODOIST_API_TOKEN not configured.")
+
+    if task_id:
+        # Update existing
+        resp = requests.post(
+            f"https://api.todoist.com/rest/v2/tasks/{task_id}",
+            headers=headers,
+            json={
+                "content": compiled["content"],
+                "description": compiled["description"],
+                "due_date": compiled["due_date"],
+                "labels": compiled["labels"],
+                "priority": compiled["priority"],
+            },
+        )
+        if resp.status_code not in (200, 204):
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return {"message": "Task updated successfully", "task_id": task_id}
+    else:
+        # Create new
+        resp = requests.post(
+            "https://api.todoist.com/rest/v2/tasks",
+            headers=headers,
+            json=compiled,
+        )
+        if resp.status_code not in (200, 204):
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return {"message": "Task created successfully", "todoist_response": resp.json() if resp.content else None}
+
+# Serve a simple frontend from / (index.html in ./static)
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(STATIC_DIR, exist_ok=True)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
