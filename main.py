@@ -189,10 +189,8 @@ TASK_SCHEMA = {
             "labels":     {"type": "array",   "items": {"type": "string"}},
             "priority":   {"type": "integer", "minimum": 1, "maximum": 4}
         },
-        # 👇 All properties must be listed here with strict outputs
-        "required": ["content", "description", "due_date", "labels", "priority"]
-    },
-    "strict": True
+        "required": ["content", "description"]  # only the truly required fields
+    }
 }
 
 def format_instructions_for_model(xml_snippet: str) -> str:
