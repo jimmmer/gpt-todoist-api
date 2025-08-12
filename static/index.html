@@ -27,11 +27,20 @@
   <div id="drop" class="box">Drop XML file here</div>
   <textarea id="xml" placeholder="…or paste JIRA XML here"></textarea>
 
-  <div class="row" style="margin:12px 0;">
-    <label><input type="radio" name="mode" value="create" checked> Create task</label>
-    <label><input type="radio" name="mode" value="update"> Update task</label>
-    <input id="task_id" placeholder="Task ID (for update)" style="flex:0 0 260px;">
-  </div>
+<div class="row" style="margin:12px 0;">
+  <label><input type="radio" name="mode" value="create" checked> Create task</label>
+  <label><input type="radio" name="mode" value="update"> Update task</label>
+
+  <!-- Manual entry stays available -->
+  <input id="task_id" placeholder="Task ID (for update)" style="flex:0 0 220px;">
+
+  <!-- New: picker for existing tasks (shown only in Update mode) -->
+  <input id="task_search" placeholder="Filter (e.g. today | overdue or text)" style="flex:1 1 240px; display:none;">
+  <button id="refreshTasksBtn" class="secondary" style="display:none;">Refresh list</button>
+  <select id="task_picker" style="flex:1 1 420px; display:none;">
+    <option value="">— select a task —</option>
+  </select>
+</div>
 
   <div class="row" style="margin:12px 0;">
     <button id="compileBtn" class="secondary">Compile Only</button>
@@ -87,6 +96,45 @@ async function postJSON(url, body) {
   try { json = JSON.parse(text); } catch(e) { json = { raw: text }; }
   return { ok: res.ok, status: res.status, json };
 }
+
+
+/* ...existing consts... */
+const taskSearch = document.getElementById('task_search');
+const refreshTasksBtn = document.getElementById('refreshTasksBtn');
+const taskPicker = document.getElementById('task_picker');
+
+/** Fetch tasks from /tasks (supports Todoist 'filter' and simple text contains) */
+async function loadTasks() {
+  const q = taskSearch.value.trim();
+  // If user put a Todoist filter (contains spaces/symbols), pass as filter
+  const url = q ? `/tasks?filter=${encodeURIComponent(q)}` : `/tasks`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to load tasks (${res.status})`);
+  return res.json(); // array from your backend passthrough
+}
+
+/** Populate the select with tasks */
+function renderTasks(tasks) {
+  taskPicker.innerHTML = `<option value="">— select a task —</option>`;
+  (tasks || []).forEach(t => {
+    // Each item: show content + (optional) due date
+    const opt = document.createElement('option');
+    opt.value = t.id; // Todoist task id
+    const due = t.due && (t.due.date || t.due.datetime) ? ` — due ${t.due.date || t.due.datetime}` : '';
+    opt.textContent = `${t.content}${due}`;
+    taskPicker.appendChild(opt);
+  });
+}
+
+/** Toggle visibility when switching mode */
+function updateModeUI() {
+  const mode = getMode();
+  const show = (mode === 'update');
+  taskSearch.style.display = show ? '' : 'none';
+  refreshTasksBtn.style.display = show ? '' : 'none';
+  taskPicker.style.display = show ? '' : 'none';
+}
+
 
 // Compile Only
 compileBtn.addEventListener('click', async () => {
@@ -171,6 +219,47 @@ compileSendBtn.addEventListener('click', async () => {
     // no compiled payload returned by that endpoint; keep as-is
   }
 });
+
+/* Show/hide picker when switching mode */
+document.querySelectorAll('input[name="mode"]').forEach(r => {
+  r.addEventListener('change', async () => {
+    updateModeUI();
+    if (getMode() === 'update') {
+      statusEl.textContent = 'Loading tasks…';
+      try {
+        const tasks = await loadTasks();
+        renderTasks(tasks);
+        statusEl.textContent = `Loaded ${tasks.length} task(s).`;
+      } catch (e) {
+        statusEl.textContent = e.message || 'Failed to load tasks.';
+      }
+    }
+  });
+});
+
+/* Load/refresh on click */
+refreshTasksBtn.addEventListener('click', async () => {
+  statusEl.textContent = 'Loading tasks…';
+  try {
+    const tasks = await loadTasks();
+    renderTasks(tasks);
+    statusEl.textContent = `Loaded ${tasks.length} task(s).`;
+  } catch (e) {
+    statusEl.textContent = e.message || 'Failed to load tasks.';
+  }
+});
+
+/* When user picks a task, fill the task_id field */
+taskPicker.addEventListener('change', () => {
+  const id = taskPicker.value;
+  if (id) taskIdInput.value = id;
+});
+
+
+/* ...rest of your script... */
+updateModeUI(); // set initial visibility (create mode hides picker)
+
+
 </script>
 </body>
 </html>
