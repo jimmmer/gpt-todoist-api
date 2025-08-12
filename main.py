@@ -1,11 +1,13 @@
 import os
 import json
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List, Optional
-from datetime import datetime, timedelta
 import requests
+from fastapi import FastAPI, HTTPException, Body
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 # Load environment variables
 load_dotenv()
@@ -164,11 +166,6 @@ async def get_task(task_id: str):
     return resp.json()
 
 # === AI compile + static page ===
-import os
-from typing import Dict, Any
-from fastapi import Body
-from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
 
 # OpenAI SDK (Responses API with structured outputs)
 # Docs: https://platform.openai.com/docs/api-reference/chat/create  https://openai.com/index/introducing-structured-outputs-in-the-api/
@@ -226,7 +223,7 @@ Rules:
   Urgent, 2024-MR6, 2024-MR7, 2024-MR8, PB Configs, CR, Improvement, Inquiry,
   Bug, Task, Discovery, Implementation, QA/Testing, RFR, Waiting On Feedback,
   E-Reader, Analytics, Help, Reminder, Internal.
-- Priority mapping: P1→priority 4 (+ label 'Urgent' if appropriate), P2→3, P3→2, default→1.
+- Priority mapping: P1 (Blocker) : 4 (+ label 'Urgent' if appropriate),P2 (Critical) : 3, P3 (Normal) : 2, P4 (Minor) : 1.
 - Type/status/component: map to existing labels when possible (Bug, Task, Implementation,
   Waiting On Feedback, Internal, Analytics, E-Reader). Create a new label only if no close match exists.
 - Fixed Version: if like "lit-2410-tandf-6.0":
